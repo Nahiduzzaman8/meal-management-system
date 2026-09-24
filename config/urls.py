@@ -6,6 +6,7 @@ from apps.reports.views import DashboardView
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.users.urls")),
+    path("api/users/", include("apps.users.user_urls")),
     path("api/months/", include("apps.months.urls")),
     path("api/meals/", include("apps.meals.urls")),
     path("api/guest-meals/", include("apps.guest_meals.urls")),

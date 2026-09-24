@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 from apps.months.models import ManagerAssignment, Month
@@ -53,6 +54,17 @@ class User(AbstractUser):
     def deactivate(self, *, actor=None):
         self.is_active = False
         self.save(update_fields=["is_active"])
+
+        active_assignments = ManagerAssignment.objects.filter(
+            user=self,
+            unassigned_at__isnull=True,
+            month__status=Month.OPEN,
+        )
+        for assignment in active_assignments:
+            assignment.unassigned_at = timezone.now()
+            assignment.unassigned_by = actor if actor and getattr(actor, "is_authenticated", False) else assignment.unassigned_by
+            assignment.save(update_fields=["unassigned_at", "unassigned_by"])
+
         for token in OutstandingToken.objects.filter(user=self):
             BlacklistedToken.objects.get_or_create(token=token)
         return self

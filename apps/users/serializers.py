@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth import password_validation
 from django.contrib.auth.password_validation import validate_password
+from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -12,6 +13,76 @@ class UserPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "email", "role", "must_change_password"]
+
+
+class UserListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "role",
+            "phone",
+            "is_active",
+            "is_staff",
+            "is_superuser",
+            "date_joined",
+        ]
+
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(choices=User.ROLE_CHOICES)
+    phone = serializers.CharField(required=False, allow_blank=True)
+
+    class Meta:
+        model = User
+        fields = ["username", "email", "first_name", "last_name", "role", "phone"]
+
+    def validate_username(self, value):
+        value = value.strip()
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
+
+    def validate_email(self, value):
+        value = value.strip()
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def create(self, validated_data):
+        temp_password = generate_temporary_password()
+        user = User(**validated_data, must_change_password=True, is_active=True)
+        password_validation.validate_password(temp_password, user=user)
+        user.set_password(temp_password)
+        user.save()
+        user._temporary_password = temp_password
+        return user
+
+
+class UserDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "role",
+            "phone",
+            "is_active",
+            "is_staff",
+            "is_superuser",
+            "must_change_password",
+            "date_joined",
+        ]
+        read_only_fields = ["username", "role", "is_staff", "is_superuser", "must_change_password", "is_active", "date_joined"]
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -84,3 +155,17 @@ class ChangePasswordSerializer(serializers.Serializer):
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password"])
         return user
+
+
+def generate_temporary_password(length=18):
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{};:,.<>/?"
+    password = get_random_string(length, alphabet)
+    if not any(ch.isupper() for ch in password):
+        password = password[:-1] + "A"
+    if not any(ch.islower() for ch in password):
+        password = password[:-1] + "a"
+    if not any(ch.isdigit() for ch in password):
+        password = password[:-1] + "1"
+    if not any(ch in "!@#$%^&*()-_=+[]{};:,.<>/?" for ch in password):
+        password = password[:-1] + "!"
+    return password

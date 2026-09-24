@@ -12,11 +12,34 @@ from apps.expenses.models import Expense
 from apps.guest_meals.models import GuestMeal
 from apps.meals.models import Meal
 from apps.months.calculations import finalize_month
-from apps.months.models import Month, MonthMember
+from apps.months.models import ManagerAssignment, Month, MonthMember
 from apps.users.models import User
 
 
 class MonthClosingReconciliationTest(TestCase):
+    def test_deactivating_active_manager_unassigns_them_from_open_month(self):
+        actor = User.objects.create_user(username="admin_user", password="pass123", role=User.ADMIN)
+        month = Month.objects.create(
+            name="2026-08",
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 31),
+            status=Month.OPEN,
+            created_by=actor,
+        )
+        manager = User.objects.create_user(username="manager_user", password="pass123", role=User.MEMBER)
+        assignment = ManagerAssignment.objects.create(
+            month=month,
+            user=manager,
+            assigned_by=actor,
+        )
+
+        manager.deactivate(actor=actor)
+
+        assignment.refresh_from_db()
+        self.assertIsNotNone(assignment.unassigned_at)
+        self.assertEqual(assignment.unassigned_by_id, actor.id)
+        self.assertFalse(manager.is_current_manager())
+
     def test_month_close_reconciliation_and_opening_balance_carry_forward(self):
         system_user = User.objects.create_user(username="system", password="pass123", role=User.MEMBER)
         month = Month.objects.create(
